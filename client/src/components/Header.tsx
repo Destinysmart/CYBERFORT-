@@ -6,7 +6,7 @@ export default function Header() {
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <div className="flex items-center">
           <img 
-            src="/public/cyberfort-logo.svg" 
+            src="/cyberfort-logo.svg" 
             alt="CyberFort Logo" 
             className="h-10 w-10 mr-3" 
           />
