@@ -5,6 +5,8 @@ import express from "express";
 import axios from "axios";
 import { z } from "zod";
 import { insertUrlCheckSchema, insertPhoneCheckSchema } from "@shared/schema";
+import https from "https";
+import { URL } from "url";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const apiRouter = express.Router();
@@ -59,17 +61,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const report = reportResponse.data.data.attributes;
         const stats = report.stats;
         
-        // Determine if URL is safe based on malicious verdicts
-        const isSafe = stats.malicious === 0 && stats.suspicious === 0;
+        // Determine if URL is safe based on malicious verdicts from VirusTotal
+        let isSafe = stats.malicious === 0 && stats.suspicious === 0;
         let result = isSafe 
           ? "No threats detected" 
           : `Detected as malicious by ${stats.malicious} and suspicious by ${stats.suspicious} security vendors`;
         
-        // Save the check result to storage
+        // Check SSL certificate for HTTPS URLs
+        let sslIssues: string[] = [];
+        let hasSslIssues = false;
+        
+        try {
+          // Only check SSL for HTTPS URLs
+          if (url.startsWith('https://')) {
+            const sslCheck = await checkSSLCertificate(url);
+            if (!sslCheck.isValid) {
+              hasSslIssues = true;
+              sslIssues = sslCheck.issues;
+              
+              // If VirusTotal thinks it's safe but SSL has issues, modify the result
+              if (isSafe) {
+                result = `No malware detected, but SSL certificate has issues: ${sslIssues.join('; ')}`;
+                // Do not mark as unsafe based only on SSL issues, but add a warning
+              }
+            }
+          }
+        } catch (sslError) {
+          console.error("Error checking SSL certificate:", sslError);
+        }
+        
+        // Save the check result to storage with SSL information
         const urlCheckData = {
           url,
           isSafe,
-          result
+          result: hasSslIssues && isSafe 
+            ? `No malware detected, but SSL certificate has issues`
+            : result
         };
         
         // Validate against schema
@@ -83,6 +110,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           url,
           isSafe,
           result,
+          sslIssues: sslIssues.length > 0 ? sslIssues : undefined,
+          hasSslIssues,
           history
         });
         
@@ -243,4 +272,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-// No helper functions needed as we're now using external APIs for both URL and phone checking
+// Helper function to check SSL/TLS certificate validity
+async function checkSSLCertificate(urlString: string): Promise<{ isValid: boolean; issues: string[] }> {
+  return new Promise((resolve) => {
+    try {
+      const issues: string[] = [];
+      const parsedUrl = new URL(urlString);
+      
+      // Only check HTTPS URLs
+      if (parsedUrl.protocol !== 'https:') {
+        issues.push('Not using HTTPS (secure connection)');
+        return resolve({ isValid: false, issues });
+      }
+      
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || 443,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'HEAD',
+        timeout: 5000, // 5 second timeout
+        rejectUnauthorized: false, // Don't reject invalid certs - we want to check them
+      };
+      
+      const req = https.request(options, (res) => {
+        // Get certificate information from TLS socket
+        // @ts-ignore - getPeerCertificate exists on TLSSocket but type definitions may not include it
+        const cert = res.socket?.getPeerCertificate ? res.socket.getPeerCertificate() : null;
+        
+        if (!cert || Object.keys(cert).length === 0) {
+          issues.push('No SSL certificate found');
+          return resolve({ isValid: false, issues });
+        }
+        
+        // Check certificate expiration
+        const validFrom = new Date(cert.valid_from);
+        const validTo = new Date(cert.valid_to);
+        const now = new Date();
+        
+        if (now < validFrom || now > validTo) {
+          issues.push(`Certificate expired or not yet valid (valid from ${validFrom.toLocaleDateString()} to ${validTo.toLocaleDateString()})`);
+        }
+        
+        // Check domain/CN mismatch
+        if (cert.subject) {
+          const cn = cert.subject.CN;
+          
+          // Check common name directly
+          if (cn && !matchesDomain(parsedUrl.hostname, cn)) {
+            // Also check subject alternative names if available
+            const altNames = cert.subjectaltname?.split(', ').map((name: string) => {
+              return name.startsWith('DNS:') ? name.substring(4) : name;
+            }) || [];
+            
+            let hasMatch = false;
+            for (const altName of altNames) {
+              if (matchesDomain(parsedUrl.hostname, altName)) {
+                hasMatch = true;
+                break;
+              }
+            }
+            
+            if (!hasMatch) {
+              issues.push(`Certificate domain mismatch (cert: ${cn}, requested: ${parsedUrl.hostname})`);
+            }
+          }
+        }
+        
+        // Check if there are any issues
+        resolve({ isValid: issues.length === 0, issues });
+      });
+      
+      req.on('error', (error) => {
+        issues.push(`SSL connection error: ${error.message}`);
+        resolve({ isValid: false, issues });
+      });
+      
+      req.on('timeout', () => {
+        req.destroy();
+        issues.push('Connection timed out');
+        resolve({ isValid: false, issues });
+      });
+      
+      req.end();
+    } catch (error: any) {
+      resolve({ isValid: false, issues: [`Error checking SSL: ${error.message}`] });
+    }
+  });
+}
+
+// Helper function to check if domain matches certificate name (with wildcard support)
+function matchesDomain(hostname: string, certName: string): boolean {
+  // Convert to lowercase for comparison
+  hostname = hostname.toLowerCase();
+  certName = certName.toLowerCase();
+  
+  // Exact match
+  if (hostname === certName) {
+    return true;
+  }
+  
+  // Check wildcard match
+  if (certName.startsWith('*.')) {
+    const certDomain = certName.substring(2);
+    return hostname.endsWith(certDomain) && hostname.lastIndexOf('.') > 0;
+  }
+  
+  return false;
+}
