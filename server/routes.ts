@@ -23,34 +23,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid URL format" });
       }
       
-      // Check for common suspicious patterns
-      const suspicious = checkSuspiciousPatterns(url);
+      // Check URL using VirusTotal API
+      if (!process.env.VIRUSTOTAL_API_KEY) {
+        return res.status(500).json({ message: "VirusTotal API key not configured" });
+      }
       
-      // For a production app, we would integrate with VirusTotal API here
-      // This is a simplified version that checks basic heuristics
-      const isSafe = !suspicious.hasSuspiciousPatterns;
-      const result = isSafe ? "No threats detected" : suspicious.reasons.join(", ");
-      
-      // Save the check result to storage
-      const urlCheckData = {
-        url,
-        isSafe,
-        result
-      };
-      
-      // Validate against schema
-      const validatedData = insertUrlCheckSchema.parse(urlCheckData);
-      const savedCheck = await storage.createUrlCheck(validatedData);
-      
-      // Get recent history
-      const history = await storage.getRecentUrlChecks(10);
-      
-      return res.status(200).json({
-        url,
-        isSafe,
-        result,
-        history
-      });
+      try {
+        // Using VirusTotal API v3
+        // First, get a scan ID by submitting the URL
+        const scanResponse = await axios.post(
+          'https://www.virustotal.com/api/v3/urls', 
+          new URLSearchParams({ url }),
+          {
+            headers: {
+              'x-apikey': process.env.VIRUSTOTAL_API_KEY,
+              'Content-Type': 'application/x-www-form-urlencoded'
+            }
+          }
+        );
+        
+        // Extract the analysis ID from the response
+        const analysisId = scanResponse.data.data.id;
+        
+        // Get the analysis report
+        const reportResponse = await axios.get(
+          `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
+          {
+            headers: {
+              'x-apikey': process.env.VIRUSTOTAL_API_KEY
+            }
+          }
+        );
+        
+        // Process the report results
+        const report = reportResponse.data.data.attributes;
+        const stats = report.stats;
+        
+        // Determine if URL is safe based on malicious verdicts
+        const isSafe = stats.malicious === 0 && stats.suspicious === 0;
+        let result = isSafe 
+          ? "No threats detected" 
+          : `Detected as malicious by ${stats.malicious} and suspicious by ${stats.suspicious} security vendors`;
+        
+        // Save the check result to storage
+        const urlCheckData = {
+          url,
+          isSafe,
+          result
+        };
+        
+        // Validate against schema
+        const validatedData = insertUrlCheckSchema.parse(urlCheckData);
+        const savedCheck = await storage.createUrlCheck(validatedData);
+        
+        // Get recent history
+        const history = await storage.getRecentUrlChecks(10);
+        
+        return res.status(200).json({
+          url,
+          isSafe,
+          result,
+          history
+        });
+        
+      } catch (error: any) {
+        console.error("Error calling VirusTotal API:", error?.message || 'Unknown error');
+        
+        // If API is rate limited or fails, fallback to a safe response
+        return res.status(500).json({ 
+          message: "Unable to check URL with VirusTotal. API error or rate limit exceeded." 
+        });
+      }
     } catch (error) {
       console.error("Error checking URL:", error);
       return res.status(500).json({ message: "Failed to check URL" });
@@ -67,21 +110,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Basic phone number validation
-      const cleaned = phoneNumber.replace(/\D/g, '');
+      let cleaned = phoneNumber.replace(/\D/g, '');
       if (cleaned.length < 10) {
         return res.status(400).json({ message: "Invalid phone number format" });
       }
       
+      // Check if AbstractAPI key is available
+      if (!process.env.ABSTRACTAPI_API_KEY) {
+        return res.status(500).json({ message: "AbstractAPI API key not configured" });
+      }
+      
       try {
-        // Use numverify API or similar (we'll use a fallback method here)
-        const phoneData = await checkPhoneNumber(phoneNumber);
+        // Format number for E.164 standard if needed
+        let formattedNumber = phoneNumber;
+        
+        // If number doesn't start with +, try to determine country code
+        if (!phoneNumber.startsWith('+')) {
+          // Check common prefixes for Nigerian numbers
+          if (cleaned.startsWith('0') && cleaned.length === 11) {
+            // Nigerian number - convert to international format
+            formattedNumber = `+234${cleaned.substring(1)}`;
+          } else if (cleaned.length === 10 && !cleaned.startsWith('0')) {
+            // Assume US/Canada for 10-digit numbers
+            formattedNumber = `+1${cleaned}`;
+          } else {
+            // Generic international prefix
+            formattedNumber = `+${cleaned}`;
+          }
+        }
+        
+        // Call AbstractAPI to validate the phone number
+        const apiUrl = `https://phonevalidation.abstractapi.com/v1/?api_key=${process.env.ABSTRACTAPI_API_KEY}&phone=${encodeURIComponent(formattedNumber)}`;
+        
+        const apiResponse = await axios.get(apiUrl);
+        const data = apiResponse.data;
+        
+        if (!data) {
+          throw new Error("Invalid response from AbstractAPI");
+        }
+        
+        // Calculate a risk score based on AbstractAPI data
+        let riskScore = 0;
+        
+        // If number is invalid, high risk
+        if (!data.valid) riskScore += 70;
+        
+        // If it's a VOIP number (could be spam)
+        if (data.type === "voip") riskScore += 30;
+        
+        // Cap risk score at 100
+        riskScore = Math.min(riskScore, 100);
         
         // Determine if the number is safe (low risk score)
-        const isSafe = phoneData.riskScore < 50;
+        const isSafe = riskScore < 50;
+        
+        // Map API response to our format
+        const phoneData = {
+          phoneNumber: formattedNumber,
+          country: data.country?.name || "Unknown",
+          carrier: data.carrier || "Unknown",
+          lineType: data.type || "Unknown",
+          riskScore,
+          details: {
+            valid: data.valid,
+            formatted: data.format?.international || formattedNumber,
+            location: data.location || "",
+            spamReports: 0 // AbstractAPI doesn't provide spam reports
+          }
+        };
         
         // Save the check result to storage
         const phoneCheckData = {
-          phoneNumber,
+          phoneNumber: formattedNumber,
           isSafe,
           country: phoneData.country,
           carrier: phoneData.carrier,
@@ -102,9 +202,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isSafe,
           history
         });
-      } catch (error) {
-        console.error("Error checking phone number:", error);
-        return res.status(500).json({ message: "Failed to check phone number" });
+      } catch (error: any) {
+        console.error("Error checking phone number with AbstractAPI:", error?.message || 'Unknown error');
+        return res.status(500).json({ 
+          message: "Unable to check phone number with AbstractAPI. API error or rate limit exceeded." 
+        });
       }
     } catch (error) {
       console.error("Error in phone check route:", error);

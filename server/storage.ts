@@ -3,6 +3,8 @@ import {
   urlChecks, type UrlCheck, type InsertUrlCheck,
   phoneChecks, type PhoneCheck, type InsertPhoneCheck
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -19,84 +21,52 @@ export interface IStorage {
   getRecentPhoneChecks(limit: number): Promise<PhoneCheck[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private urlChecks: Map<number, UrlCheck>;
-  private phoneChecks: Map<number, PhoneCheck>;
-  private userIdCounter: number;
-  private urlCheckIdCounter: number;
-  private phoneCheckIdCounter: number;
-
-  constructor() {
-    this.users = new Map();
-    this.urlChecks = new Map();
-    this.phoneChecks = new Map();
-    this.userIdCounter = 1;
-    this.urlCheckIdCounter = 1;
-    this.phoneCheckIdCounter = 1;
-  }
-
+export class DatabaseStorage implements IStorage {
   // User methods
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const results = await db.select().from(users).where(eq(users.id, id));
+    return results.length > 0 ? results[0] : undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const results = await db.select().from(users).where(eq(users.username, username));
+    return results.length > 0 ? results[0] : undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.userIdCounter++;
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+    const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
   }
   
   // URL check methods
   async createUrlCheck(check: InsertUrlCheck): Promise<UrlCheck> {
-    const id = this.urlCheckIdCounter++;
-    const now = new Date();
-    const urlCheck: UrlCheck = { 
-      ...check, 
-      id, 
-      checkedAt: now 
-    };
-    this.urlChecks.set(id, urlCheck);
-    return urlCheck;
+    const result = await db.insert(urlChecks).values(check).returning();
+    return result[0];
   }
   
   async getRecentUrlChecks(limit: number): Promise<UrlCheck[]> {
-    return Array.from(this.urlChecks.values())
-      .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
-      .slice(0, limit);
+    return await db.select().from(urlChecks).orderBy(desc(urlChecks.checkedAt)).limit(limit);
   }
   
   // Phone check methods
   async createPhoneCheck(check: InsertPhoneCheck): Promise<PhoneCheck> {
-    const id = this.phoneCheckIdCounter++;
-    const now = new Date();
-    const phoneCheck: PhoneCheck = { 
-      ...check, 
-      id, 
-      checkedAt: now,
-      // Ensure null values for optional fields
+    // Ensure all optional fields have null values if not provided
+    const phoneCheckData = {
+      ...check,
       country: check.country || null,
       carrier: check.carrier || null,
       lineType: check.lineType || null,
       riskScore: check.riskScore || null,
       details: check.details || null
     };
-    this.phoneChecks.set(id, phoneCheck);
-    return phoneCheck;
+    
+    const result = await db.insert(phoneChecks).values(phoneCheckData).returning();
+    return result[0];
   }
   
   async getRecentPhoneChecks(limit: number): Promise<PhoneCheck[]> {
-    return Array.from(this.phoneChecks.values())
-      .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
-      .slice(0, limit);
+    return await db.select().from(phoneChecks).orderBy(desc(phoneChecks.checkedAt)).limit(limit);
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
