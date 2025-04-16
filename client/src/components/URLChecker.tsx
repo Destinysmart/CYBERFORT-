@@ -16,6 +16,7 @@ export default function URLChecker() {
     result: string;
     url: string;
   } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Load initial history
   useQuery({
@@ -29,9 +30,14 @@ export default function URLChecker() {
   const checkUrlMutation = useMutation({
     mutationFn: async (urlToCheck: string) => {
       const res = await apiRequest("POST", "/api/check-url", { url: urlToCheck });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to check URL");
+      }
       return res.json();
     },
     onSuccess: (data) => {
+      setError(null);
       setCheckResult({
         isSafe: data.isSafe,
         result: data.result,
@@ -42,6 +48,10 @@ export default function URLChecker() {
       if (data.history) {
         setUrlHistory(data.history);
       }
+    },
+    onError: (error: Error) => {
+      setError(error.message);
+      setCheckResult(null);
     }
   });
 
