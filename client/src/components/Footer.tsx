@@ -6,7 +6,7 @@ export default function Footer() {
           CyberFort analyzes URLs and phone numbers for potential threats using VirusTotal and AbstractAPI. While helpful, always exercise caution with unfamiliar websites and phone numbers.
         </p>
         <p className="text-sm text-gray-500 dark:text-gray-500">
-          Created by Destiny · <a href="https://x.com/Destinysmart_" className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">https://x.com/Destinysmart_</a>
+          Created by <a href="https://twitter.com/Destinysmart_" className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">Destiny</a> · <a href="https://x.com/Destinysmart_" className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">https://x.com/Destinysmart_</a>
         </p>
       </div>
     </footer>
