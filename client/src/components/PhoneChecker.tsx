@@ -8,6 +8,14 @@ import { Label } from "@/components/ui/label";
 import { useCheckHistory, PhoneCheckResult } from "@/contexts/CheckHistoryContext";
 import CollapsibleHistory from "./CollapsibleHistory";
 
+interface HistoryItem {
+  id: number;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  status: "safe" | "unsafe";
+}
+
 export default function PhoneChecker() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const { phoneHistory, setPhoneHistory } = useCheckHistory();
@@ -27,7 +35,7 @@ export default function PhoneChecker() {
     onSuccess: (data: PhoneCheckResult[]) => {
       setPhoneHistory(data);
     }
-  });
+  } as any);
 
   // Phone check mutation
   const checkPhoneMutation = useMutation({

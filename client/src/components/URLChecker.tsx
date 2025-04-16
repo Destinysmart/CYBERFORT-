@@ -8,6 +8,14 @@ import { Label } from "@/components/ui/label";
 import { useCheckHistory, UrlCheckResult } from "@/contexts/CheckHistoryContext";
 import CollapsibleHistory from "./CollapsibleHistory";
 
+interface HistoryItem {
+  id: number;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  status: "safe" | "unsafe";
+}
+
 export default function URLChecker() {
   const [url, setUrl] = useState("");
   const { urlHistory, setUrlHistory } = useCheckHistory();
@@ -24,7 +32,7 @@ export default function URLChecker() {
     onSuccess: (data: UrlCheckResult[]) => {
       setUrlHistory(data);
     }
-  });
+  } as any);
 
   // URL check mutation
   const checkUrlMutation = useMutation({
@@ -69,7 +77,7 @@ export default function URLChecker() {
     subtitle: item.isSafe ? "Safe - No threats detected" : `Dangerous - ${item.result}`,
     timestamp: item.checkedAt,
     status: item.isSafe ? "safe" : "unsafe"
-  }));
+  })) as unknown as HistoryItem[];
 
   return (
     <Card className="bg-white dark:bg-gray-800">
