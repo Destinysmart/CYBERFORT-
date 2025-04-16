@@ -28,6 +28,7 @@ export default function PhoneChecker() {
     riskScore: number;
     details?: any;
   } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Load initial history
   useQuery({
@@ -41,9 +42,14 @@ export default function PhoneChecker() {
   const checkPhoneMutation = useMutation({
     mutationFn: async (phoneToCheck: string) => {
       const res = await apiRequest("POST", "/api/check-phone", { phoneNumber: phoneToCheck });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to check phone number");
+      }
       return res.json();
     },
     onSuccess: (data) => {
+      setError(null);
       setCheckResult({
         phoneNumber: data.phoneNumber,
         isSafe: data.isSafe,
@@ -58,6 +64,10 @@ export default function PhoneChecker() {
       if (data.history) {
         setPhoneHistory(data.history);
       }
+    },
+    onError: (error: Error) => {
+      setError(error.message);
+      setCheckResult(null);
     }
   });
 
@@ -77,7 +87,7 @@ export default function PhoneChecker() {
       : `Suspicious - Potential spam (${item.riskScore}% risk)`,
     timestamp: item.checkedAt,
     status: item.isSafe ? "safe" : "unsafe"
-  }));
+  } as const)) as unknown as HistoryItem[];
 
   return (
     <Card className="bg-white dark:bg-gray-800">
@@ -115,6 +125,25 @@ export default function PhoneChecker() {
             <div className="flex items-center justify-center p-2">
               <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
               <span className="ml-2 text-gray-700 dark:text-gray-300">Checking phone number...</span>
+            </div>
+          </div>
+        )}
+        
+        {!checkPhoneMutation.isPending && error && (
+          <div className="mb-6 p-4 rounded-lg border border-red-500 bg-red-50 dark:bg-red-900/20">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-500 dark:text-red-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800 dark:text-red-300">Error</h3>
+                <div className="mt-2 text-sm text-red-700 dark:text-red-400">
+                  <p>{error}</p>
+                  <p className="mt-1">Please try again or use a different phone number.</p>
+                </div>
+              </div>
             </div>
           </div>
         )}
