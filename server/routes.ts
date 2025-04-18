@@ -119,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       } catch (error: any) {
         console.error("Error calling VirusTotal API:", error?.message || 'Unknown error');
-        
+
         let errorMessage = "Unable to check URL with VirusTotal. ";
         if (error.response?.status === 429) {
           errorMessage += "Rate limit exceeded. Please try again in a few minutes.";
@@ -177,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Call AbstractAPI to validate the phone number
-        const apiKey = process.env.ABSTRACT_API_KEY;
+        const apiKey = process.env.ABSTRACTAPI_API_KEY;
         if (!apiKey) {
           return res.status(500).json({ message: "Abstract API key not configured" });
         }
@@ -247,7 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } catch (error: any) {
         console.error("Error checking phone number with AbstractAPI:", error?.message || 'Unknown error');
-        
+
         let errorMessage = "Unable to check phone number with AbstractAPI. ";
         if (error.response?.status === 429) {
           errorMessage += "Rate limit exceeded. Please try again in a few minutes.";
