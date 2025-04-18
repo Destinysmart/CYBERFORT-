@@ -18,6 +18,7 @@ export type User = typeof users.$inferSelect;
 
 export const urlChecks = pgTable("url_checks", {
   id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
   url: text("url").notNull(),
   isSafe: boolean("is_safe").notNull(),
   result: text("result").notNull(),
@@ -35,6 +36,7 @@ export type UrlCheck = typeof urlChecks.$inferSelect;
 
 export const phoneChecks = pgTable("phone_checks", {
   id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
   phoneNumber: text("phone_number").notNull(),
   isSafe: boolean("is_safe").notNull(),
   country: text("country"),
