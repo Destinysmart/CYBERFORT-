@@ -98,8 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           result: hasSslIssues && isSafe 
             ? `No malware detected, but SSL certificate has issues: ${sslIssues.join('; ')}`
             : result,
-          checkedAt: new Date(),
-          userId: undefined // Make userId undefined to handle nullable field
+          checkedAt: new Date()
         };
 
         // Validate against schema
@@ -231,8 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lineType: phoneData.lineType,
           riskScore: phoneData.riskScore,
           details: phoneData.details,
-          checkedAt: new Date(),
-          userId: null // Make userId optional
+          checkedAt: new Date()
         };
 
         // Validate against schema
