@@ -1,20 +1,6 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { ReplitAuthContext, authMiddleware as replitAuthMiddleware } from "@replit/repl-auth-express";
-
-// Custom auth middleware that allows anonymous users
-const authMiddleware = (req: Request, res: any, next: any) => {
-  replitAuthMiddleware(req, res, (err?: any) => {
-    if (err || !req.user) {
-      // If auth fails, set as anonymous user
-      req.user = { id: 'anonymous_user' };
-    }
-    next();
-  });
-};
-
-type AuthRequest = Request & ReplitAuthContext;
 import express from "express";
 import axios from "axios";
 import { z } from "zod";
@@ -24,7 +10,6 @@ import { URL } from "url";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const apiRouter = express.Router();
-  apiRouter.use(authMiddleware);
 
   // URL Checker endpoint
   apiRouter.post("/check-url", async (req, res) => {
@@ -106,10 +91,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Save the check result to storage with SSL information and user ID
-        const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
         const urlCheckData = {
           url,
-          userId,
           isSafe,
           result: hasSslIssues && isSafe 
             ? `No malware detected, but SSL certificate has issues`
@@ -226,10 +209,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
 
         // Save the check result to storage with user ID
-        const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
         const phoneCheckData = {
           phoneNumber: formattedNumber,
-          userId,
           isSafe,
           country: phoneData.country,
           carrier: phoneData.carrier,
@@ -265,8 +246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get URL check history
   apiRouter.get("/url-history", async (req, res) => {
     try {
-      const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
-      const history = await storage.getRecentUrlChecks(userId, 10);
+      const history = await storage.getRecentUrlChecks(10);
       return res.status(200).json(history);
     } catch (error) {
       console.error("Error getting URL history:", error);
@@ -277,8 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get phone check history
   apiRouter.get("/phone-history", async (req, res) => {
     try {
-      const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
-      const history = await storage.getRecentPhoneChecks(userId, 10);
+      const history = await storage.getRecentPhoneChecks(10);
       return res.status(200).json(history);
     } catch (error) {
       console.error("Error getting phone history:", error);
