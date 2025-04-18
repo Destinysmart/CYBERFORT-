@@ -90,13 +90,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("Error checking SSL certificate:", sslError);
         }
 
-        // Save the check result to storage with SSL information and user ID
+        // Save the check result to storage with SSL information
         const urlCheckData = {
           url,
           isSafe,
           result: hasSslIssues && isSafe 
             ? `No malware detected, but SSL certificate has issues`
-            : result
+            : result,
+          checkedAt: new Date()
         };
 
         // Validate against schema
@@ -208,7 +209,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         };
 
-        // Save the check result to storage with user ID
+        // Save the check result to storage
         const phoneCheckData = {
           phoneNumber: formattedNumber,
           isSafe,
@@ -216,7 +217,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           carrier: phoneData.carrier,
           lineType: phoneData.lineType,
           riskScore: phoneData.riskScore,
-          details: phoneData.details
+          details: phoneData.details,
+          checkedAt: new Date()
         };
 
         // Validate against schema

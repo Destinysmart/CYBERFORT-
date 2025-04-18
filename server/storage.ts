@@ -44,10 +44,9 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
   
-  async getRecentUrlChecks(userId: string, limit: number): Promise<UrlCheck[]> {
+  async getRecentUrlChecks(limit: number): Promise<UrlCheck[]> {
     return await db.select()
       .from(urlChecks)
-      .where(eq(urlChecks.userId, userId))
       .orderBy(desc(urlChecks.checkedAt))
       .limit(limit);
   }
@@ -68,10 +67,9 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
   
-  async getRecentPhoneChecks(userId: string, limit: number): Promise<PhoneCheck[]> {
+  async getRecentPhoneChecks(limit: number): Promise<PhoneCheck[]> {
     return await db.select()
       .from(phoneChecks)
-      .where(eq(phoneChecks.userId, userId))
       .orderBy(desc(phoneChecks.checkedAt))
       .limit(limit);
   }
