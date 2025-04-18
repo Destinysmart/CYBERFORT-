@@ -30,21 +30,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   apiRouter.post("/check-url", async (req, res) => {
     try {
       const { url } = req.body;
-      
+
       if (!url) {
         return res.status(400).json({ message: "URL is required" });
       }
-      
+
       // Basic URL validation
       if (!url.match(/^(http|https):\/\/[a-zA-Z0-9-_.]+\.[a-zA-Z]{2,}(\/.*)?$/)) {
         return res.status(400).json({ message: "Invalid URL format" });
       }
-      
+
       // Check URL using VirusTotal API
       if (!process.env.VIRUSTOTAL_API_KEY) {
         return res.status(500).json({ message: "VirusTotal API key not configured" });
       }
-      
+
       try {
         // Using VirusTotal API v3
         // First, get a scan ID by submitting the URL
@@ -58,10 +58,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         );
-        
+
         // Extract the analysis ID from the response
         const analysisId = scanResponse.data.data.id;
-        
+
         // Get the analysis report
         const reportResponse = await axios.get(
           `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
@@ -71,21 +71,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         );
-        
+
         // Process the report results
         const report = reportResponse.data.data.attributes;
         const stats = report.stats;
-        
+
         // Determine if URL is safe based on malicious verdicts from VirusTotal
         let isSafe = stats.malicious === 0 && stats.suspicious === 0;
         let result = isSafe 
           ? "No threats detected" 
           : `Detected as malicious by ${stats.malicious} and suspicious by ${stats.suspicious} security vendors`;
-        
+
         // Check SSL certificate for HTTPS URLs
         let sslIssues: string[] = [];
         let hasSslIssues = false;
-        
+
         try {
           // Only check SSL for HTTPS URLs
           if (url.startsWith('https://')) {
@@ -93,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (!sslCheck.isValid) {
               hasSslIssues = true;
               sslIssues = sslCheck.issues;
-              
+
               // If VirusTotal thinks it's safe but SSL has issues, modify the result
               if (isSafe) {
                 result = `No malware detected, but SSL certificate has issues: ${sslIssues.join('; ')}`;
@@ -104,9 +104,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (sslError) {
           console.error("Error checking SSL certificate:", sslError);
         }
-        
+
         // Save the check result to storage with SSL information and user ID
-        const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
+        const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
         const urlCheckData = {
           url,
           userId,
@@ -115,14 +115,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ? `No malware detected, but SSL certificate has issues`
             : result
         };
-        
+
         // Validate against schema
         const validatedData = insertUrlCheckSchema.parse(urlCheckData);
         const savedCheck = await storage.createUrlCheck(validatedData);
-        
+
         // Get recent history
         const history = await storage.getRecentUrlChecks(10);
-        
+
         return res.status(200).json({
           url,
           isSafe,
@@ -131,10 +131,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           hasSslIssues,
           history
         });
-        
+
       } catch (error: any) {
         console.error("Error calling VirusTotal API:", error?.message || 'Unknown error');
-        
+
         // If API is rate limited or fails, fallback to a safe response
         return res.status(500).json({ 
           message: "Unable to check URL with VirusTotal. API error or rate limit exceeded." 
@@ -145,31 +145,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Failed to check URL" });
     }
   });
-  
+
   // Phone Checker endpoint
   apiRouter.post("/check-phone", async (req, res) => {
     try {
       const { phoneNumber } = req.body;
-      
+
       if (!phoneNumber) {
         return res.status(400).json({ message: "Phone number is required" });
       }
-      
+
       // Basic phone number validation
       let cleaned = phoneNumber.replace(/\D/g, '');
       if (cleaned.length < 10) {
         return res.status(400).json({ message: "Invalid phone number format" });
       }
-      
+
       // Check if AbstractAPI key is available
       if (!process.env.ABSTRACTAPI_API_KEY) {
         return res.status(500).json({ message: "AbstractAPI API key not configured" });
       }
-      
+
       try {
         // Format number for E.164 standard if needed
         let formattedNumber = phoneNumber;
-        
+
         // If number doesn't start with +, try to determine country code
         if (!phoneNumber.startsWith('+')) {
           // Check common prefixes for Nigerian numbers
@@ -184,32 +184,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             formattedNumber = `+${cleaned}`;
           }
         }
-        
+
         // Call AbstractAPI to validate the phone number
         const apiUrl = `https://phonevalidation.abstractapi.com/v1/?api_key=${process.env.ABSTRACTAPI_API_KEY}&phone=${encodeURIComponent(formattedNumber)}`;
-        
+
         const apiResponse = await axios.get(apiUrl);
         const data = apiResponse.data;
-        
+
         if (!data) {
           throw new Error("Invalid response from AbstractAPI");
         }
-        
+
         // Calculate a risk score based on AbstractAPI data
         let riskScore = 0;
-        
+
         // If number is invalid, high risk
         if (!data.valid) riskScore += 70;
-        
+
         // If it's a VOIP number (could be spam)
         if (data.type === "voip") riskScore += 30;
-        
+
         // Cap risk score at 100
         riskScore = Math.min(riskScore, 100);
-        
+
         // Determine if the number is safe (low risk score)
         const isSafe = riskScore < 50;
-        
+
         // Map API response to our format
         const phoneData = {
           phoneNumber: formattedNumber,
@@ -224,9 +224,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             spamReports: 0 // AbstractAPI doesn't provide spam reports
           }
         };
-        
+
         // Save the check result to storage with user ID
-        const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
+        const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
         const phoneCheckData = {
           phoneNumber: formattedNumber,
           userId,
@@ -237,14 +237,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           riskScore: phoneData.riskScore,
           details: phoneData.details
         };
-        
+
         // Validate against schema
         const validatedData = insertPhoneCheckSchema.parse(phoneCheckData);
         const savedCheck = await storage.createPhoneCheck(validatedData);
-        
+
         // Get recent history
         const history = await storage.getRecentPhoneChecks(10);
-        
+
         return res.status(200).json({
           ...phoneData,
           isSafe,
@@ -261,11 +261,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Failed to check phone number" });
     }
   });
-  
+
   // Get URL check history
   apiRouter.get("/url-history", async (req, res) => {
     try {
-      const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
+      const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
       const history = await storage.getRecentUrlChecks(userId, 10);
       return res.status(200).json(history);
     } catch (error) {
@@ -273,11 +273,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Failed to get URL history" });
     }
   });
-  
+
   // Get phone check history
   apiRouter.get("/phone-history", async (req, res) => {
     try {
-      const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
+      const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
       const history = await storage.getRecentPhoneChecks(userId, 10);
       return res.status(200).json(history);
     } catch (error) {
@@ -299,13 +299,13 @@ async function checkSSLCertificate(urlString: string): Promise<{ isValid: boolea
     try {
       const issues: string[] = [];
       const parsedUrl = new URL(urlString);
-      
+
       // Only check HTTPS URLs
       if (parsedUrl.protocol !== 'https:') {
         issues.push('Not using HTTPS (secure connection)');
         return resolve({ isValid: false, issues });
       }
-      
+
       const options = {
         hostname: parsedUrl.hostname,
         port: parsedUrl.port || 443,
@@ -314,37 +314,37 @@ async function checkSSLCertificate(urlString: string): Promise<{ isValid: boolea
         timeout: 5000, // 5 second timeout
         rejectUnauthorized: false, // Don't reject invalid certs - we want to check them
       };
-      
+
       const req = https.request(options, (res) => {
         // Get certificate information from TLS socket
         // @ts-ignore - getPeerCertificate exists on TLSSocket but type definitions may not include it
         const cert = res.socket?.getPeerCertificate ? res.socket.getPeerCertificate() : null;
-        
+
         if (!cert || Object.keys(cert).length === 0) {
           issues.push('No SSL certificate found');
           return resolve({ isValid: false, issues });
         }
-        
+
         // Check certificate expiration
         const validFrom = new Date(cert.valid_from);
         const validTo = new Date(cert.valid_to);
         const now = new Date();
-        
+
         if (now < validFrom || now > validTo) {
           issues.push(`Certificate expired or not yet valid (valid from ${validFrom.toLocaleDateString()} to ${validTo.toLocaleDateString()})`);
         }
-        
+
         // Check domain/CN mismatch
         if (cert.subject) {
           const cn = cert.subject.CN;
-          
+
           // Check common name directly
           if (cn && !matchesDomain(parsedUrl.hostname, cn)) {
             // Also check subject alternative names if available
             const altNames = cert.subjectaltname?.split(', ').map((name: string) => {
               return name.startsWith('DNS:') ? name.substring(4) : name;
             }) || [];
-            
+
             let hasMatch = false;
             for (const altName of altNames) {
               if (matchesDomain(parsedUrl.hostname, altName)) {
@@ -352,28 +352,28 @@ async function checkSSLCertificate(urlString: string): Promise<{ isValid: boolea
                 break;
               }
             }
-            
+
             if (!hasMatch) {
               issues.push(`Certificate domain mismatch (cert: ${cn}, requested: ${parsedUrl.hostname})`);
             }
           }
         }
-        
+
         // Check if there are any issues
         resolve({ isValid: issues.length === 0, issues });
       });
-      
+
       req.on('error', (error) => {
         issues.push(`SSL connection error: ${error.message}`);
         resolve({ isValid: false, issues });
       });
-      
+
       req.on('timeout', () => {
         req.destroy();
         issues.push('Connection timed out');
         resolve({ isValid: false, issues });
       });
-      
+
       req.end();
     } catch (error: any) {
       resolve({ isValid: false, issues: [`Error checking SSL: ${error.message}`] });
@@ -386,17 +386,17 @@ function matchesDomain(hostname: string, certName: string): boolean {
   // Convert to lowercase for comparison
   hostname = hostname.toLowerCase();
   certName = certName.toLowerCase();
-  
+
   // Exact match
   if (hostname === certName) {
     return true;
   }
-  
+
   // Check wildcard match
   if (certName.startsWith('*.')) {
     const certDomain = certName.substring(2);
     return hostname.endsWith(certDomain) && hostname.lastIndexOf('.') > 0;
   }
-  
+
   return false;
 }
