@@ -28,13 +28,16 @@ export default function URLChecker() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load initial history
+  // Load initial history with auth
   useQuery({
     queryKey: ["/api/url-history"],
     onSuccess: (data: UrlCheckResult[]) => {
-      setUrlHistory(data);
+      setUrlHistory(data || []);
+    },
+    onError: () => {
+      setUrlHistory([]);
     }
-  } as any);
+  });
 
   // URL check mutation
   const checkUrlMutation = useMutation({

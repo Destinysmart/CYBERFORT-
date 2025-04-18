@@ -30,13 +30,16 @@ export default function PhoneChecker() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load initial history
+  // Load initial history with auth
   useQuery({
     queryKey: ["/api/phone-history"],
     onSuccess: (data: PhoneCheckResult[]) => {
-      setPhoneHistory(data);
+      setPhoneHistory(data || []);
+    },
+    onError: () => {
+      setPhoneHistory([]);
     }
-  } as any);
+  });
 
   // Phone check mutation
   const checkPhoneMutation = useMutation({

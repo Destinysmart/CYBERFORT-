@@ -1,7 +1,18 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { authMiddleware, AuthRequest } from "@replit/auth";
+import { authMiddleware as replitAuthMiddleware, type AuthRequest } from "@replit/auth";
+
+// Custom auth middleware that allows anonymous users
+const authMiddleware = (req: Request, res: any, next: any) => {
+  replitAuthMiddleware(req, res, (err?: any) => {
+    if (err) {
+      // If auth fails, set as anonymous user
+      (req as AuthRequest).user = { id: 'anonymous_user' };
+    }
+    next();
+  });
+};
 import express from "express";
 import axios from "axios";
 import { z } from "zod";
@@ -92,10 +103,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("Error checking SSL certificate:", sslError);
         }
         
-        // Save the check result to storage with SSL information
+        // Save the check result to storage with SSL information and user ID
+        const userId = (req as AuthRequest).user?.id || 'anonymous_user';
         const urlCheckData = {
           url,
-          userId: (req as AuthRequest).user?.id || 'anonymous',
+          userId,
           isSafe,
           result: hasSslIssues && isSafe 
             ? `No malware detected, but SSL certificate has issues`
@@ -211,10 +223,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         };
         
-        // Save the check result to storage
+        // Save the check result to storage with user ID
+        const userId = (req as AuthRequest).user?.id || 'anonymous_user';
         const phoneCheckData = {
           phoneNumber: formattedNumber,
-          userId: (req as AuthRequest).user?.id || 'anonymous',
+          userId,
           isSafe,
           country: phoneData.country,
           carrier: phoneData.carrier,
