@@ -106,7 +106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Save the check result to storage with SSL information and user ID
-        const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
+        const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
         const urlCheckData = {
           url,
           userId,
@@ -226,7 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
 
         // Save the check result to storage with user ID
-        const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
+        const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
         const phoneCheckData = {
           phoneNumber: formattedNumber,
           userId,
@@ -265,7 +265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get URL check history
   apiRouter.get("/url-history", async (req, res) => {
     try {
-      const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
+      const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
       const history = await storage.getRecentUrlChecks(userId, 10);
       return res.status(200).json(history);
     } catch (error) {
@@ -277,7 +277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get phone check history
   apiRouter.get("/phone-history", async (req, res) => {
     try {
-      const userId = ((req as AuthRequest).replit?.user?.id || 'anonymous_user').toString();
+      const userId = ((req as AuthRequest).user?.id || 'anonymous_user').toString();
       const history = await storage.getRecentPhoneChecks(userId, 10);
       return res.status(200).json(history);
     } catch (error) {
