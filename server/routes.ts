@@ -26,7 +26,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check URL using VirusTotal API
-      if (!process.env.VIRUSTOTAL_API_KEY) {
+      const apiKey = process.env.VIRUSTOTAL_API_KEY;
+      if (!apiKey) {
         return res.status(500).json({ message: "VirusTotal API key not configured" });
       }
 
@@ -38,7 +39,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           new URLSearchParams({ url }),
           {
             headers: {
-              'x-apikey': process.env.VIRUSTOTAL_API_KEY,
+              'x-apikey': apiKey,
               'Content-Type': 'application/x-www-form-urlencoded'
             }
           }
@@ -118,11 +119,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       } catch (error: any) {
         console.error("Error calling VirusTotal API:", error?.message || 'Unknown error');
+        
+        let errorMessage = "Unable to check URL with VirusTotal. ";
+        if (error.response?.status === 429) {
+          errorMessage += "Rate limit exceeded. Please try again in a few minutes.";
+        } else if (error.code === 'ECONNREFUSED' || error.code === 'ECONNABORTED') {
+          errorMessage += "Connection failed. Please check your internet connection.";
+        } else {
+          errorMessage += "An unexpected error occurred.";
+        }
 
-        // If API is rate limited or fails, fallback to a safe response
-        return res.status(500).json({ 
-          message: "Unable to check URL with VirusTotal. API error or rate limit exceeded." 
-        });
+        return res.status(error.response?.status || 500).json({ message: errorMessage });
       }
     } catch (error) {
       console.error("Error checking URL:", error);
@@ -170,7 +177,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Call AbstractAPI to validate the phone number
-        const apiUrl = `https://phonevalidation.abstractapi.com/v1/?api_key=${process.env.ABSTRACTAPI_API_KEY}&phone=${encodeURIComponent(formattedNumber)}`;
+        const apiKey = process.env.ABSTRACT_API_KEY;
+        if (!apiKey) {
+          return res.status(500).json({ message: "Abstract API key not configured" });
+        }
+
+        const apiUrl = `https://phonevalidation.abstractapi.com/v1/?api_key=${apiKey}&phone=${encodeURIComponent(formattedNumber)}`;
 
         const apiResponse = await axios.get(apiUrl);
         const data = apiResponse.data;
@@ -235,9 +247,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } catch (error: any) {
         console.error("Error checking phone number with AbstractAPI:", error?.message || 'Unknown error');
-        return res.status(500).json({ 
-          message: "Unable to check phone number with AbstractAPI. API error or rate limit exceeded." 
-        });
+        
+        let errorMessage = "Unable to check phone number with AbstractAPI. ";
+        if (error.response?.status === 429) {
+          errorMessage += "Rate limit exceeded. Please try again in a few minutes.";
+        } else if (error.code === 'ECONNREFUSED' || error.code === 'ECONNABORTED') {
+          errorMessage += "Connection failed. Please check your internet connection.";
+        } else {
+          errorMessage += "An unexpected error occurred.";
+        }
+
+        return res.status(error.response?.status || 500).json({ message: errorMessage });
       }
     } catch (error) {
       console.error("Error in phone check route:", error);
