@@ -26,7 +26,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check URL using VirusTotal API
-      const apiKey = process.env.VIRUSTOTAL_API_KEY;
+      const apiKey = process.env.VirusTotal_API;
       if (!apiKey) {
         return res.status(500).json({ message: "VirusTotal API key not configured" });
       }
@@ -53,7 +53,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
           {
             headers: {
-              'x-apikey': process.env.VIRUSTOTAL_API_KEY
+              'x-apikey': process.env.VirusTotal_API
             }
           }
         );
@@ -119,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       } catch (error: any) {
         console.error("Error calling VirusTotal API:", error?.message || 'Unknown error');
-        
+
         let errorMessage = "Unable to check URL with VirusTotal. ";
         if (error.response?.status === 429) {
           errorMessage += "Rate limit exceeded. Please try again in a few minutes.";
@@ -153,7 +153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if AbstractAPI key is available
-      if (!process.env.ABSTRACTAPI_API_KEY) {
+      if (!process.env.ABSTRACT_API) {
         return res.status(500).json({ message: "AbstractAPI API key not configured" });
       }
 
@@ -177,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Call AbstractAPI to validate the phone number
-        const apiKey = process.env.ABSTRACTAPI_API_KEY;
+        const apiKey = process.env.ABSTRACT_API;
         if (!apiKey) {
           return res.status(500).json({ message: "Abstract API key not configured" });
         }
@@ -247,7 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } catch (error: any) {
         console.error("Error checking phone number with AbstractAPI:", error?.message || 'Unknown error');
-        
+
         let errorMessage = "Unable to check phone number with AbstractAPI. ";
         if (error.response?.status === 429) {
           errorMessage += "Rate limit exceeded. Please try again in a few minutes.";
