@@ -177,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Call AbstractAPI to validate the phone number
-        const apiKey = process.env.ABSTRACT_API_KEY;
+        const apiKey = process.env.ABSTRACTAPI_API_KEY;
         if (!apiKey) {
           return res.status(500).json({ message: "Abstract API key not configured" });
         }
