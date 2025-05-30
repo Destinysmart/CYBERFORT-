@@ -26,7 +26,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check URL using VirusTotal API
-      const apiKey = process.env.VirusTotal_API;
+      const apiKey = process.env.VIRUSTOTAL_API_KEY || process.env.VirusTotal_API;
       if (!apiKey) {
         return res.status(500).json({ message: "VirusTotal API key not configured" });
       }
