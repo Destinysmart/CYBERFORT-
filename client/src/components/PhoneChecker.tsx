@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useCheckHistory, PhoneCheckResult } from "@/contexts/CheckHistoryContext";
 import CollapsibleHistory from "./CollapsibleHistory";
+import axios from "axios";
 
 interface HistoryItem {
   id: number;
@@ -33,6 +34,13 @@ export default function PhoneChecker() {
   // Load initial history with auth
   useQuery({
     queryKey: ["/api/phone-history"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/phone-history");
+      if (!response.ok) {
+        throw new Error("Failed to fetch phone history");
+      }
+      return response.json();
+    },
     onSuccess: (data: PhoneCheckResult[]) => {
       setPhoneHistory(data || []);
     },
@@ -44,29 +52,61 @@ export default function PhoneChecker() {
   // Phone check mutation
   const checkPhoneMutation = useMutation({
     mutationFn: async (phoneToCheck: string) => {
-      const res = await apiRequest("POST", "/api/check-phone", { phoneNumber: phoneToCheck });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to check phone number");
+      // Format number for API
+      let formattedNumber = phoneToCheck;
+      if (!phoneToCheck.startsWith('+')) {
+        formattedNumber = `+${phoneToCheck}`;
       }
-      return res.json();
+
+      // Call Abstract API directly
+      const response = await axios.get(
+        `https://phonevalidation.abstractapi.com/v1/?api_key=584345ac18d143e6aab67270331031d7&phone=${encodeURIComponent(formattedNumber)}`
+      );
+
+      const data = response.data;
+
+      // Calculate risk score
+      let riskScore = 0;
+      if (!data.valid) riskScore += 70;
+      if (data.type === "voip") riskScore += 30;
+      riskScore = Math.min(riskScore, 100);
+
+      // Determine if safe
+      const isSafe = riskScore < 50;
+
+      // Format response
+      return {
+        phoneNumber: formattedNumber,
+        isSafe,
+        country: data.country?.name || "Unknown",
+        carrier: data.carrier || "Unknown",
+        lineType: data.type || "Unknown",
+        riskScore,
+        details: {
+          valid: data.valid,
+          formatted: data.format?.international || formattedNumber,
+          location: data.location || "",
+          spamReports: 0
+        }
+      };
     },
     onSuccess: (data) => {
       setError(null);
-      setCheckResult({
+      setCheckResult(data);
+      
+      // Add to history
+      const historyItem: PhoneCheckResult = {
+        id: Date.now(),
         phoneNumber: data.phoneNumber,
         isSafe: data.isSafe,
         country: data.country,
         carrier: data.carrier,
         lineType: data.lineType,
         riskScore: data.riskScore,
-        details: data.details
-      });
+        checkedAt: new Date().toISOString()
+      };
       
-      // Update history if it was returned
-      if (data.history) {
-        setPhoneHistory(data.history);
-      }
+      setPhoneHistory(prev => [historyItem, ...prev].slice(0, 10));
     },
     onError: (error: Error) => {
       setError(error.message);

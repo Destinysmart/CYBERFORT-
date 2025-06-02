@@ -1,14 +1,21 @@
 import { 
-  users, type User, type InsertUser,
-  urlChecks, type UrlCheck, type InsertUrlCheck,
-  phoneChecks, type PhoneCheck, type InsertPhoneCheck
-} from "@shared/schema";
-import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
+  addDoc,
+  serverTimestamp
+} from "firebase/firestore";
+import { db } from "@shared/firebase";
+import type { User, InsertUser, UrlCheck, InsertUrlCheck, PhoneCheck, InsertPhoneCheck } from "@shared/schema";
 
 export interface IStorage {
   // User methods
-  getUser(id: number): Promise<User | undefined>;
+  getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   
@@ -21,58 +28,73 @@ export interface IStorage {
   getRecentPhoneChecks(limit: number): Promise<PhoneCheck[]>;
 }
 
-export class DatabaseStorage implements IStorage {
+export class FirestoreStorage implements IStorage {
   // User methods
-  async getUser(id: number): Promise<User | undefined> {
-    const results = await db.select().from(users).where(eq(users.id, id));
-    return results.length > 0 ? results[0] : undefined;
+  async getUser(id: string): Promise<User | undefined> {
+    const userDoc = await getDoc(doc(db, "users", id));
+    return userDoc.exists() ? { id: userDoc.id, ...userDoc.data() } as User : undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const results = await db.select().from(users).where(eq(users.username, username));
-    return results.length > 0 ? results[0] : undefined;
+    const q = query(collection(db, "users"), where("username", "==", username));
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) return undefined;
+    const doc = querySnapshot.docs[0];
+    return { id: doc.id, ...doc.data() } as User;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const result = await db.insert(users).values(insertUser).returning();
-    return result[0];
+    const docRef = await addDoc(collection(db, "users"), {
+      ...insertUser,
+      createdAt: serverTimestamp()
+    });
+    return { id: docRef.id, ...insertUser } as User;
   }
   
   // URL check methods
   async createUrlCheck(check: InsertUrlCheck): Promise<UrlCheck> {
-    const result = await db.insert(urlChecks).values(check).returning();
-    return result[0];
+    const docRef = await addDoc(collection(db, "urlChecks"), {
+      ...check,
+      checkedAt: serverTimestamp()
+    });
+    return { id: docRef.id, ...check } as UrlCheck;
   }
   
-  async getRecentUrlChecks(limit: number): Promise<UrlCheck[]> {
-    return await db.select()
-      .from(urlChecks)
-      .orderBy(desc(urlChecks.checkedAt))
-      .limit(limit);
+  async getRecentUrlChecks(limitCount: number): Promise<UrlCheck[]> {
+    const q = query(
+      collection(db, "urlChecks"),
+      orderBy("checkedAt", "desc"),
+      limit(limitCount)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as UrlCheck);
   }
   
   // Phone check methods
   async createPhoneCheck(check: InsertPhoneCheck): Promise<PhoneCheck> {
-    // Ensure all optional fields have null values if not provided
     const phoneCheckData = {
       ...check,
       country: check.country || null,
       carrier: check.carrier || null,
       lineType: check.lineType || null,
       riskScore: check.riskScore || null,
-      details: check.details || null
+      details: check.details || null,
+      checkedAt: serverTimestamp()
     };
     
-    const result = await db.insert(phoneChecks).values(phoneCheckData).returning();
-    return result[0];
+    const docRef = await addDoc(collection(db, "phoneChecks"), phoneCheckData);
+    return { id: docRef.id, ...phoneCheckData } as PhoneCheck;
   }
   
-  async getRecentPhoneChecks(limit: number): Promise<PhoneCheck[]> {
-    return await db.select()
-      .from(phoneChecks)
-      .orderBy(desc(phoneChecks.checkedAt))
-      .limit(limit);
+  async getRecentPhoneChecks(limitCount: number): Promise<PhoneCheck[]> {
+    const q = query(
+      collection(db, "phoneChecks"),
+      orderBy("checkedAt", "desc"),
+      limit(limitCount)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PhoneCheck);
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new FirestoreStorage();

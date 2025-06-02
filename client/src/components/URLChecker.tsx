@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useCheckHistory, UrlCheckResult } from "@/contexts/CheckHistoryContext";
 import CollapsibleHistory from "./CollapsibleHistory";
+import axios from "axios";
 
 interface HistoryItem {
   id: number;
@@ -25,44 +26,158 @@ export default function URLChecker() {
     url: string;
     sslIssues?: string[];
     hasSslIssues?: boolean;
+    stats: {
+      total: number;
+      malicious: number;
+      suspicious: number;
+      undetected: number;
+    };
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load initial history with auth
-  useQuery({
+  // Load initial history with modern React Query syntax
+  const historyQuery = useQuery({
     queryKey: ["/api/url-history"],
-    onSuccess: (data: UrlCheckResult[]) => {
-      setUrlHistory(data || []);
-    },
-    onError: () => {
+    queryFn: () => 
+      apiRequest("GET", "/api/url-history").then(res => {
+        if (!res.ok) throw new Error("Failed to load history");
+        return res.json();
+      }),
+  });
+
+  // Handle history query results
+  useEffect(() => {
+    if (historyQuery.data) {
+      setUrlHistory(historyQuery.data || []);
+    }
+    if (historyQuery.error) {
       setUrlHistory([]);
     }
-  });
+  }, [historyQuery.data, historyQuery.error, setUrlHistory]);
 
   // URL check mutation
   const checkUrlMutation = useMutation({
     mutationFn: async (urlToCheck: string) => {
-      const res = await apiRequest("POST", "/api/check-url", { url: urlToCheck });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to check URL");
+      // Preprocess and validate URL
+      let processedUrl = urlToCheck.trim();
+      
+      // Add http:// if no protocol is specified
+      if (!processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
+        processedUrl = `http://${processedUrl}`;
       }
-      return res.json();
+
+      // Basic URL validation
+      try {
+        new URL(processedUrl);
+      } catch (e) {
+        throw new Error("Invalid URL format. Please enter a valid URL.");
+      }
+
+      // Get API key from environment variable
+      const apiKey = "fa445174a59c7519b96f92c1a1897ff5eb0d0a3051c0130ea7a039e63da29966";
+
+      try {
+        // First, submit the URL for analysis
+        const scanResponse = await axios.post(
+          'https://www.virustotal.com/api/v3/urls',
+          new URLSearchParams({ url: processedUrl }),
+          {
+            headers: {
+              'accept': 'application/json',
+              'content-type': 'application/x-www-form-urlencoded',
+              'x-apikey': apiKey
+            }
+          }
+        );
+
+        // Extract the analysis ID from the response
+        const analysisId = scanResponse.data.data.id;
+
+        // Get the analysis report
+        const reportResponse = await axios.get(
+          `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
+          {
+            headers: {
+              'accept': 'application/json',
+              'x-apikey': apiKey
+            }
+          }
+        );
+
+        // Process the report results
+        const report = reportResponse.data.data.attributes;
+        const stats = report.stats;
+
+        // Calculate risk score based on VirusTotal stats
+        let riskScore = 0;
+        let issues: string[] = [];
+
+        // Add points based on malicious and suspicious verdicts
+        if (stats.malicious > 0) {
+          riskScore += (stats.malicious / stats.total) * 100;
+          issues.push(`${stats.malicious} security vendors flagged this as malicious`);
+        }
+        if (stats.suspicious > 0) {
+          riskScore += (stats.suspicious / stats.total) * 50;
+          issues.push(`${stats.suspicious} security vendors flagged this as suspicious`);
+        }
+
+        // Check SSL/TLS
+        let sslIssues: string[] = [];
+        if (report.ssl_info) {
+          if (!report.ssl_info.is_valid) {
+            sslIssues.push("Invalid SSL certificate");
+          }
+          if (report.ssl_info.is_expired) {
+            sslIssues.push("SSL certificate is expired");
+          }
+          if (report.ssl_info.is_self_signed) {
+            sslIssues.push("SSL certificate is self-signed");
+          }
+        }
+
+        // Determine if safe
+        const isSafe = riskScore < 50;
+
+        // Format response
+        return {
+          url: processedUrl,
+          isSafe,
+          result: issues.length > 0 ? issues.join(", ") : "No threats detected",
+          sslIssues: sslIssues.length > 0 ? sslIssues : undefined,
+          hasSslIssues: sslIssues.length > 0,
+          riskScore: Math.min(riskScore, 100),
+          stats: {
+            total: stats.total,
+            malicious: stats.malicious,
+            suspicious: stats.suspicious,
+            undetected: stats.undetected
+          }
+        };
+      } catch (error: any) {
+        if (error.response?.status === 401) {
+          throw new Error("Invalid VirusTotal API key. Please check your API key configuration.");
+        } else if (error.response?.status === 429) {
+          throw new Error("Rate limit exceeded. Please try again in a few minutes.");
+        } else {
+          throw new Error(`Error checking URL: ${error.message}`);
+        }
+      }
     },
     onSuccess: (data) => {
       setError(null);
-      setCheckResult({
+      setCheckResult(data);
+      
+      // Add to history
+      const historyItem: UrlCheckResult = {
+        id: Date.now(),
+        url: data.url,
         isSafe: data.isSafe,
         result: data.result,
-        url: data.url,
-        sslIssues: data.sslIssues,
-        hasSslIssues: data.hasSslIssues
-      });
+        checkedAt: new Date().toISOString()
+      };
       
-      // Update history if it was returned
-      if (data.history) {
-        setUrlHistory(data.history);
-      }
+      setUrlHistory(prev => [historyItem, ...prev].slice(0, 10));
     },
     onError: (error: Error) => {
       setError(error.message);
@@ -73,24 +188,24 @@ export default function URLChecker() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!url) return;
-    
+
     checkUrlMutation.mutate(url);
   };
 
   // Format history items for CollapsibleHistory component
-  const historyItems = urlHistory.map(item => ({
+  const historyItems: HistoryItem[] = urlHistory.map(item => ({
     id: item.id,
     title: item.url,
     subtitle: item.isSafe ? "Safe - No threats detected" : `Dangerous - ${item.result}`,
     timestamp: item.checkedAt,
-    status: item.isSafe ? "safe" : "unsafe"
-  })) as unknown as HistoryItem[];
+    status: item.isSafe ? "safe" as const : "unsafe" as const
+  }));
 
   return (
     <Card className="bg-white dark:bg-gray-800">
       <CardContent className="p-6">
         <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">URL Checker</h2>
-        
+
         <form onSubmit={handleSubmit} className="mb-4">
           <div className="mb-4">
             <Label htmlFor="url-input" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
@@ -125,7 +240,7 @@ export default function URLChecker() {
             </div>
           </div>
         )}
-        
+
         {!checkUrlMutation.isPending && error && (
           <div className="mb-6 p-4 rounded-lg border border-red-500 bg-red-50 dark:bg-red-900/20">
             <div className="flex">
@@ -184,7 +299,7 @@ export default function URLChecker() {
                     <p className="mt-1">Detected issues: {checkResult.result}</p>
                   )}
                 </div>
-                
+
                 {/* SSL Certificate Warning */}
                 {checkResult.hasSslIssues && (
                   <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-700 rounded-md">
@@ -210,7 +325,7 @@ export default function URLChecker() {
                     </div>
                   </div>
                 )}
-                
+
               </div>
             </div>
           </div>
