@@ -149,7 +149,7 @@ export default function PhoneChecker() {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="+1 (555) 123-4567"
-                className="rounded-r-none bg-white dark:bg-gray-700"
+                className="rounded-r-none bg-white dark:bg-gray-700 outline-none  focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
               />
               <Button 
                 type="submit" 

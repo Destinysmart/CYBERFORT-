@@ -218,7 +218,7 @@ export default function URLChecker() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com"
-                className="rounded-r-none bg-white dark:bg-gray-700"
+                className="rounded-r-none bg-white dark:bg-gray-700 outline-none  focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 "
               />
               <Button 
                 type="submit" 
