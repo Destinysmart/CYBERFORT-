@@ -66,96 +66,17 @@ export default function URLChecker() {
         throw new Error("Invalid URL format. Please enter a valid URL.");
       }
 
-      // Get API key from environment variable
-      const apiKey = "fa445174a59c7519b96f92c1a1897ff5eb0d0a3051c0130ea7a039e63da29966";
+      // Call our backend API
+      const response = await apiRequest("POST", "/api/check-url", {
+        url: processedUrl
+      });
 
-      try {
-        // First, submit the URL for analysis
-        const scanResponse = await axios.post(
-          'https://www.virustotal.com/api/v3/urls',
-          new URLSearchParams({ url: processedUrl }),
-          {
-            headers: {
-              'accept': 'application/json',
-              'content-type': 'application/x-www-form-urlencoded',
-              'x-apikey': apiKey
-            }
-          }
-        );
-
-        // Extract the analysis ID from the response
-        const analysisId = scanResponse.data.data.id;
-
-        // Get the analysis report
-        const reportResponse = await axios.get(
-          `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
-          {
-            headers: {
-              'accept': 'application/json',
-              'x-apikey': apiKey
-            }
-          }
-        );
-
-        // Process the report results
-        const report = reportResponse.data.data.attributes;
-        const stats = report.stats;
-
-        // Calculate risk score based on VirusTotal stats
-        let riskScore = 0;
-        let issues: string[] = [];
-
-        // Add points based on malicious and suspicious verdicts
-        if (stats.malicious > 0) {
-          riskScore += (stats.malicious / stats.total) * 100;
-          issues.push(`${stats.malicious} security vendors flagged this as malicious`);
-        }
-        if (stats.suspicious > 0) {
-          riskScore += (stats.suspicious / stats.total) * 50;
-          issues.push(`${stats.suspicious} security vendors flagged this as suspicious`);
-        }
-
-        // Check SSL/TLS
-        let sslIssues: string[] = [];
-        if (report.ssl_info) {
-          if (!report.ssl_info.is_valid) {
-            sslIssues.push("Invalid SSL certificate");
-          }
-          if (report.ssl_info.is_expired) {
-            sslIssues.push("SSL certificate is expired");
-          }
-          if (report.ssl_info.is_self_signed) {
-            sslIssues.push("SSL certificate is self-signed");
-          }
-        }
-
-        // Determine if safe
-        const isSafe = riskScore < 50;
-
-        // Format response
-        return {
-          url: processedUrl,
-          isSafe,
-          result: issues.length > 0 ? issues.join(", ") : "No threats detected",
-          sslIssues: sslIssues.length > 0 ? sslIssues : undefined,
-          hasSslIssues: sslIssues.length > 0,
-          riskScore: Math.min(riskScore, 100),
-          stats: {
-            total: stats.total,
-            malicious: stats.malicious,
-            suspicious: stats.suspicious,
-            undetected: stats.undetected
-          }
-        };
-      } catch (error: any) {
-        if (error.response?.status === 401) {
-          throw new Error("Invalid VirusTotal API key. Please check your API key configuration.");
-        } else if (error.response?.status === 429) {
-          throw new Error("Rate limit exceeded. Please try again in a few minutes.");
-        } else {
-          throw new Error(`Error checking URL: ${error.message}`);
-        }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to check URL");
       }
+
+      return response.json();
     },
     onSuccess: (data) => {
       setError(null);
