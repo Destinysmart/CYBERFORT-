@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useCheckHistory, UrlCheckResult } from "@/contexts/CheckHistoryContext";
 import CollapsibleHistory from "./CollapsibleHistory";
 import axios from "axios";
+import { STORAGE_KEYS, getStoredHistory, addToHistory } from "@/lib/storage";
 
 interface HistoryItem {
   id: number;
@@ -17,9 +17,17 @@ interface HistoryItem {
   status: "safe" | "unsafe";
 }
 
+interface UrlCheckResult {
+  id: number;
+  url: string;
+  isSafe: boolean;
+  result: string;
+  checkedAt: string;
+}
+
 export default function URLChecker() {
   const [url, setUrl] = useState("");
-  const { urlHistory, setUrlHistory } = useCheckHistory();
+  const [urlHistory, setUrlHistory] = useState<UrlCheckResult[]>([]);
   const [checkResult, setCheckResult] = useState<{
     isSafe: boolean;
     result: string;
@@ -35,27 +43,12 @@ export default function URLChecker() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load initial history with modern React Query syntax
-  const historyQuery = useQuery({
-    queryKey: ["/api/url-history"],
-    queryFn: () => 
-      apiRequest("GET", "/api/url-history").then(res => {
-        if (!res.ok) throw new Error("Failed to load history");
-        return res.json();
-      }),
-  });
-
-  // Handle history query results
+  // Load history from localStorage on component mount
   useEffect(() => {
-    if (historyQuery.data) {
-      setUrlHistory(historyQuery.data || []);
-    }
-    if (historyQuery.error) {
-      setUrlHistory([]);
-    }
-  }, [historyQuery.data, historyQuery.error, setUrlHistory]);
+    const storedHistory = getStoredHistory<UrlCheckResult>(STORAGE_KEYS.URL_HISTORY);
+    setUrlHistory(storedHistory);
+  }, []);
 
-  // URL check mutation
   const checkUrlMutation = useMutation({
     mutationFn: async (urlToCheck: string) => {
       // Preprocess and validate URL
@@ -177,7 +170,10 @@ export default function URLChecker() {
         checkedAt: new Date().toISOString()
       };
       
-      setUrlHistory(prev => [historyItem, ...prev].slice(0, 10));
+      // Update state and localStorage
+      const newHistory = [historyItem, ...urlHistory].slice(0, 10);
+      setUrlHistory(newHistory);
+      addToHistory(STORAGE_KEYS.URL_HISTORY, historyItem);
     },
     onError: (error: Error) => {
       setError(error.message);

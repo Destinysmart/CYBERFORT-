@@ -1,13 +1,13 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useCheckHistory, PhoneCheckResult } from "@/contexts/CheckHistoryContext";
 import CollapsibleHistory from "./CollapsibleHistory";
 import axios from "axios";
+import { STORAGE_KEYS, getStoredHistory, addToHistory } from "@/lib/storage";
 
 interface HistoryItem {
   id: number;
@@ -17,9 +17,20 @@ interface HistoryItem {
   status: "safe" | "unsafe";
 }
 
+interface PhoneCheckResult {
+  id: number;
+  phoneNumber: string;
+  isSafe: boolean;
+  country: string;
+  carrier: string;
+  lineType: string;
+  riskScore: number;
+  checkedAt: string;
+}
+
 export default function PhoneChecker() {
   const [phoneNumber, setPhoneNumber] = useState("");
-  const { phoneHistory, setPhoneHistory } = useCheckHistory();
+  const [phoneHistory, setPhoneHistory] = useState<PhoneCheckResult[]>([]);
   const [checkResult, setCheckResult] = useState<{
     phoneNumber: string;
     isSafe: boolean;
@@ -31,23 +42,11 @@ export default function PhoneChecker() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load initial history with auth
-  useQuery({
-    queryKey: ["/api/phone-history"],
-    queryFn: async () => {
-      const response = await apiRequest("GET", "/api/phone-history");
-      if (!response.ok) {
-        throw new Error("Failed to fetch phone history");
-      }
-      return response.json();
-    },
-    onSuccess: (data: PhoneCheckResult[]) => {
-      setPhoneHistory(data || []);
-    },
-    onError: () => {
-      setPhoneHistory([]);
-    }
-  });
+  // Load history from localStorage on component mount
+  useEffect(() => {
+    const storedHistory = getStoredHistory<PhoneCheckResult>(STORAGE_KEYS.PHONE_HISTORY);
+    setPhoneHistory(storedHistory);
+  }, []);
 
   // Phone check mutation
   const checkPhoneMutation = useMutation({
@@ -106,7 +105,10 @@ export default function PhoneChecker() {
         checkedAt: new Date().toISOString()
       };
       
-      setPhoneHistory(prev => [historyItem, ...prev].slice(0, 10));
+      // Update state and localStorage
+      const newHistory = [historyItem, ...phoneHistory].slice(0, 10);
+      setPhoneHistory(newHistory);
+      addToHistory(STORAGE_KEYS.PHONE_HISTORY, historyItem);
     },
     onError: (error: Error) => {
       setError(error.message);
