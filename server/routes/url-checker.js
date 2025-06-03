@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 
+// VirusTotal API key
 const VIRUSTOTAL_API_KEY = "fa445174a59c7519b96f92c1a1897ff5eb0d0a3051c0130ea7a039e63da29966";
 
 router.post('/check-url', async (req, res) => {
