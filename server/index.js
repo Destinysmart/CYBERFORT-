@@ -2,15 +2,16 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const urlCheckerRouter = require('./routes/url-checker');
+require('dotenv').config();
 
 const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'https://cyberfort-palq.onrender.com'],
+  origin: ['http://localhost:5173', 'https://cyberfort-palq.onrender.com', 'https://cybershield.onrender.com'],
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-apikey']
 }));
 
 app.use(express.json());
@@ -31,10 +32,15 @@ if (process.env.NODE_ENV === 'production') {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).json({ message: 'Something went wrong!' });
+  res.status(500).json({ 
+    message: 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log(`VirusTotal API Key: ${process.env.VIRUSTOTAL_API_KEY ? 'Configured' : 'Not configured'}`);
 }); 
