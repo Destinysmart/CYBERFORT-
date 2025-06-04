@@ -6,8 +6,7 @@ export const STORAGE_KEYS = {
 export function getStoredHistory<T>(key: string): T[] {
   try {
     const stored = localStorage.getItem(key);
-    if (!stored) return [];
-    return JSON.parse(stored);
+    return stored ? JSON.parse(stored) : [];
   } catch (e) {
     console.error(`Error reading ${key} from localStorage:`, e);
     return [];
